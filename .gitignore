@@ -1,0 +1,6 @@
+target/
+/ref/
+/software-ref/
+.directory
+*.pcap
+*.pcapng
