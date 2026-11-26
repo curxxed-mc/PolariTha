@@ -5,7 +5,9 @@ and the **AQIRYS Talitha** keyboard (over a USB cable, its 2.4 GHz receiver or B
 It's a single binary with an egui GUI and a small CLI, and it talks to the devices
 directly through `/dev/hidraw*`.
 
-The [protocol notes](docs/PROTOCOL.md) document the HID reports used by both devices.
+The [protocol notes](docs/PROTOCOL.md) document the HID reports used by both devices, and
+[findings/](findings/README.md) explains how they were found, what was verified on hardware, and
+what is still unknown.
 To add another AQIRYS product, follow the [Linux reverse-engineering guide](docs/REVERSE_ENGINEERING.md),
 or point an AI coding agent at [prompt.md](prompt.md), and submit your working implementation to
 PolariTha as a pull request.

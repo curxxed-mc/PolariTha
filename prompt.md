@@ -14,8 +14,9 @@ with the owner's device and the owner's copy of the vendor's Windows software.
 
 ## Before you start
 
-1. Clone PolariTha and read `README.md`, `docs/PROTOCOL.md` and
-   `docs/REVERSE_ENGINEERING.md`. `src/polaris.rs` (feature reports plus 64-byte
+1. Clone PolariTha and read `README.md`, `docs/PROTOCOL.md`,
+   `docs/REVERSE_ENGINEERING.md` and the notes in `findings/` (how each fact
+   was found and verified). `src/polaris.rs` (feature reports plus 64-byte
    bulk writes, write-only) and `src/talitha.rs` (request/acknowledge packets
    over a vendor report, receiver and Bluetooth) are worked examples of two
    different AQIRYS protocols. Expect a new device to differ from both.
@@ -68,8 +69,9 @@ with the owner's device and the owner's copy of the vendor's Windows software.
 6. **Integrate.** Add `src/<device>.rs` with the protocol, a settings model and
    unit tests built from known bytes. Add a GUI page in `src/gui/` that uses the
    existing widgets and theme, a CLI command in `src/main.rs`, a udev rule in
-   `packaging/70-polaritha.rules`, and a section in `docs/PROTOCOL.md`. Mark
-   anything inferred but not tested on hardware as untested.
+   `packaging/70-polaritha.rules`, a section in `docs/PROTOCOL.md`, and a
+   `findings/<device>.md` describing how you found each fact, tagged Verified,
+   Vendor code or Inferred.
 7. **Check.** `cargo build --release`, `cargo test --locked` and
    `cargo clippy` must pass.
 
