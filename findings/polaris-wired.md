@@ -70,8 +70,8 @@ those offsets to UI controls took two steps:
 
 That gave the per-profile layout in PROTOCOL.md: LOD enable at `0x41` bit 0,
 stage count at `0x46`, light mode, brightness and speed at `0x47`-`0x49`, X/Y
-sensitivity at `0x4A`/`0x4B`, DPI from `0x52`, LOD value at `0x66`, key response
-at `0x67`, and DPI colours at `0x68`. **Vendor code**
+sensitivity at `0x4A`/`0x4B`, DPI from `0x52`, LOD value at `0x66`, "key
+response" at `0x67`, and DPI colours at `0x68`. **Vendor code**
 
 Value ranges come from the UI XML (`res/performancepage.xml`,
 `res/lightpage.xml`): X/Y sensitivity 1-100 %, key response 1-100 "ms",
@@ -129,14 +129,31 @@ it is.
 - **Rapid-click timing.** Recording raw kernel events during fast alternating
   clicks showed a hard floor of about 15 ms for every press and every release,
   so presses were never closer than about 31 ms. USB polling is not the cause:
-  the endpoint's `bInterval` is 1 (1000 Hz). Writing **key response = 1 ms**
+  the endpoint's `bInterval` is 1 (1000 Hz). Writing **key response = 1**
   (`0x67`) and recording again did not move the floor. **Verified**
+- **Key response = 100.** With `0x67` = 100 confirmed on the mouse, single-finger
+  jitter clicking still reached 11.6 presses/s in raw kernel events (about 13
+  CPS in a browser test), with presses and gaps as short as 22 ms. A 100 ms
+  debounce would cap the rate at about 5/s, so `0x67` is **not** a debounce time
+  in milliseconds. **Verified**
+- **Key response latency (A-B-A test).** A keyboard key and the left button were
+  pressed together about 20-40 times per run while both devices' raw events were
+  recorded; the keyboard's own latency is the same in every run, so it cancels
+  out. Median mouse-minus-key offset: **+2.3 ms** at 100, **−16.2 ms** at 1,
+  **−3.1 ms** at 100 again. The two runs at 100 agree with each other
+  (permutation test p = 0.34) and both differ from the run at 1 (pooled
+  difference about 16 ms, p ≈ 0.001). So `0x67` does delay button reports, by
+  roughly 15-20 ms at 100 relative to 1. **Verified**
 
 ## Open questions
 
-- What does key response (`0x67`) actually control? The vendor default is 20, but
-  1 did not change the measured floor. The next test would be a large value such
-  as 100 ms, to see whether the floor rises.
+- What exactly is `0x67` ("Key response", 1-100 "ms" in the vendor UI, default
+  20)? It adds about 15-20 ms of latency at 100 compared with 1, and the
+  shortest observed press rose from about 14 ms to 22 ms. Both fit a debounce
+  that waits until a button has been stable for N before reporting it, with N
+  around 15-20 ms at 100: well below the 100 ms the UI label suggests. One
+  reading is units of about 0.2 ms. That is **inferred**; a run at a middle
+  value such as 50 would show whether the delay scales linearly.
 - Button 7's factory code `0B 09 00 00` is not in the function table. Type
   `0x0B` is the "sniper" function with argument 0, so 9 may be a sniper DPI
   stage, but that is unconfirmed.

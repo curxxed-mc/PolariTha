@@ -40,7 +40,7 @@ and `02 cur` again.
 | 0x52/53   | per-stage "double" bit mask (X/Y)                                |
 | 0x54..5B  | DPI X per stage, 0x5C..63 DPI Y                                  |
 | 0x66      | LOD value (1 low, 2 high)                                        |
-| 0x67      | key response (ms)                                                |
+| 0x67      | "key response", 1-100 (effect unclear, see findings)             |
 | 0x68..7F  | 8 × RGB stage colours                                            |
 
 DPI for the 3370: the slider value `v` runs 1..290, where DPI = 50·v up to 10000 and

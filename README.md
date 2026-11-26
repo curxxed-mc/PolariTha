@@ -36,7 +36,7 @@ Without the udev rule (`packaging/70-polaritha.rules`, installed to
 **Polaris Wired (mouse)** has 5 on-board profiles:
 - polling rate 125/250/500/1000 Hz
 - 1–8 DPI stages, 50–19000 DPI, with a colour per stage and a selectable current stage
-- X/Y sensitivity, lift-off distance (low/high), key response time
+- X/Y sensitivity, lift-off distance (low/high), key response
 - 12 lighting effects with brightness and speed, plus a fixed colour, an 8-colour cycle, or the Slide colour
 - remapping for the 9 buttons: mouse functions, DPI/profile/polling-rate switching,
   media/app keys, office shortcuts, any keyboard key combination, or disabled

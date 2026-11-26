@@ -317,7 +317,7 @@ pub fn build_profile_attributes(p: &Profile) -> [u8; 128] {
     if p.lod_enabled {
         a[0x66] = LOD_VALUES[(p.lod as usize).min(1)];
     }
-    a[0x67] = p.key_response.clamp(1, 100);
+    a[0x67] = p.key_response.clamp(1, 100); // vendor "Key response"; not a debounce time (findings/polaris-wired.md)
     for (i, c) in p.dpi_colors.iter().enumerate() {
         a[0x68 + 3 * i..0x6B + 3 * i].copy_from_slice(c);
     }
