@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PolariTha
+GenericName=Mouse & Keyboard Configurator
+Comment=Configure the AQIRYS Polaris Wired mouse and AQIRYS Talitha keyboard
+Exec=polaritha
+Icon=polaritha
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=mouse;keyboard;rgb;dpi;aqirys;
+StartupWMClass=polaritha

@@ -1,0 +1,15 @@
+# libinput quirk for the AQIRYS Polaris Wired.
+#
+# libinput drops a button press that follows a release too quickly, treating it
+# as switch bounce, which discards fast repeated clicks. ModelBouncingKeys=1 turns the filter off for this mouse, as libinput already
+# does for mice such as the Glorious Model O.
+#
+# Installed as /etc/libinput/local-overrides.quirks. libinput reads quirks when
+# the compositor starts, so log out and back in after installing it.
+
+[AQIRYS Polaris Wired]
+MatchUdevType=mouse
+MatchBus=usb
+MatchVendor=0x04D9
+MatchProduct=0xA2E7
+ModelBouncingKeys=1
