@@ -637,6 +637,7 @@ impl KeyboardPage {
                 ui.spacing_mut().item_spacing.y = 10.0;
                 kv(ui, "Link", via);
                 kv(ui, "Keyboard", state);
+                kv(ui, "USB cable", if talitha::find_wired().is_some() { "258a:0236 connected" } else { "not connected" });
                 kv(ui, "Receiver", if talitha::find_dongle().is_some() { "3554:fa09 plugged in" } else { "not plugged in" });
                 kv(ui, "Bluetooth", if talitha::find_bluetooth().is_some() { "connected" } else { "not connected" });
                 if let Some(c) = &self.cfg {
@@ -646,7 +647,7 @@ impl KeyboardPage {
                 }
                 kv(ui, "Remapped keys", &self.st.keymap.len().to_string());
                 ui.add_space(4.0);
-                hint(ui, "When the keyboard is connected over Bluetooth, the app uses Bluetooth; otherwise it uses the 2.4 GHz receiver.");
+                hint(ui, "The app uses the USB cable when it is plugged in, then Bluetooth, then the 2.4 GHz receiver.");
             });
             let ui = &mut cols[1];
             ui.spacing_mut().item_spacing.y = 24.0;

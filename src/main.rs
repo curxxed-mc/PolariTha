@@ -66,6 +66,8 @@ fn cli(args: &[String], verbose: bool) -> Result<(), String> {
                     "  <- Polaris config interface"
                 } else if (i.vid, i.pid) == (talitha::DONGLE_VID, talitha::DONGLE_PID) && has(talitha::USAGE_PAGE) {
                     "  <- Talitha receiver config interface"
+                } else if (i.vid, i.pid) == (talitha::WIRED_VID, talitha::WIRED_PID) && has(talitha::WIRED_USAGE_PAGE) && i.report_ids.contains(&6) {
+                    "  <- Talitha USB cable config interface"
                 } else if i.vid == talitha::DONGLE_VID && talitha::BT_PIDS.contains(&i.pid) && has(talitha::USAGE_PAGE) {
                     "  <- Talitha Bluetooth config interface"
                 } else {

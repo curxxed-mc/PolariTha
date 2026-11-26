@@ -1,4 +1,8 @@
-//! AQIRYS Talitha keyboard through its 2.4 GHz receiver (3554:fa09).
+//! AQIRYS Talitha keyboard over USB cable (258a:0236), its 2.4 GHz receiver
+//! (3554:fa09) or Bluetooth (3554:fa08).
+//!
+//! The wired path ("CDevG5KB") uses 520-byte feature reports, see `wired_*`.
+//! The receiver and Bluetooth use the "CDev3632" packets described below.
 //!
 //! Reverse engineered from the vendor DeviceDriver.exe ("CDev3632" transport
 //! and the shared "CDevG5KB::ApplySetting" logic):
@@ -26,6 +30,21 @@ pub const DONGLE_PID: u16 = 0xFA09;
 /// vendor tool as "pid&fa07") and 0xFA08 ("Talitha BT3.0", classic BT).
 pub const BT_PIDS: [u16; 2] = [0xFA07, 0xFA08];
 pub const USAGE_PAGE: u32 = 0xFF02;
+/// Wired (USB cable) mode: Sinowealth-based board, vendor feature report 6.
+pub const WIRED_VID: u16 = 0x258A;
+pub const WIRED_PID: u16 = 0x0236;
+pub const WIRED_USAGE_PAGE: u32 = 0xFF00;
+const WIRED_REPORT_ID: u8 = 0x06;
+const WIRED_REPORT_LEN: usize = 0x208; // 520 bytes including the report id
+const WIRED_CHUNK: usize = 0x200;
+/// Wired command numbers (CDevG5KB); they differ from the wireless ones.
+const W_MATRIX: u8 = 0x03;
+const W_LED: u8 = 0x04;
+const W_CUSTOM: u8 = 0x06;
+const W_PALETTE: u8 = 0x0A;
+const W_RESET: u8 = 0x11;
+const W_PSD: u8 = 0x02;
+const W_READ: u8 = 0x80;
 const REPORT_ID: u8 = 0x13;
 const CHUNK: usize = 14;
 pub const MATRIX_LEN: usize = 126;
@@ -278,8 +297,16 @@ pub fn find_bluetooth() -> Option<hidraw::HidrawInfo> {
     BT_PIDS.iter().find_map(|&pid| hidraw::find(DONGLE_VID, pid, USAGE_PAGE))
 }
 
+/// The cable interface: the 0xFF00 collection that carries feature report 6.
+pub fn find_wired() -> Option<hidraw::HidrawInfo> {
+    hidraw::enumerate().into_iter().find(|i| {
+        i.vid == WIRED_VID && i.pid == WIRED_PID && i.collections.contains(&WIRED_USAGE_PAGE) && i.report_ids.contains(&WIRED_REPORT_ID)
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Link {
+    Wired,
     Receiver,
     Bluetooth,
 }
@@ -287,16 +314,21 @@ pub enum Link {
 impl Link {
     pub fn name(self) -> &'static str {
         match self {
+            Link::Wired => "USB cable",
             Link::Receiver => "2.4 GHz receiver",
             Link::Bluetooth => "Bluetooth",
         }
     }
 }
 
-/// The node to configure through. A Bluetooth node only exists while the
-/// keyboard is connected over BT, so it wins over an idle receiver.
+/// The node to configure through: the cable when plugged in (fast and
+/// reliable), then Bluetooth (its node only exists while connected), then the
+/// receiver.
 pub fn find_device() -> Option<(hidraw::HidrawInfo, Link)> {
-    find_bluetooth().map(|i| (i, Link::Bluetooth)).or_else(|| find_dongle().map(|i| (i, Link::Receiver)))
+    find_wired()
+        .map(|i| (i, Link::Wired))
+        .or_else(|| find_bluetooth().map(|i| (i, Link::Bluetooth)))
+        .or_else(|| find_dongle().map(|i| (i, Link::Receiver)))
 }
 
 fn packet(cmd: u8, n: usize, idx: usize, hi: u8, data: &[u8]) -> [u8; 20] {
@@ -339,10 +371,75 @@ fn save_config_cache(c: &LedConfig) {
 impl Device {
     pub fn open() -> io::Result<Self> {
         let (info, link) = find_device().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "AQIRYS Talitha not found (no 3554:fa09 receiver, no Bluetooth connection)")
+            io::Error::new(io::ErrorKind::NotFound, "AQIRYS Talitha not found (no USB cable, receiver or Bluetooth connection)")
         })?;
         Ok(Self { dev: Hidraw::open(&info.node)?, link, verbose: false, filled: std::cell::Cell::new(0) })
     }
+
+    // ---- wired (CDevG5KB): 520-byte feature reports ----
+    //
+    // header: [report id, cmd, arg, 0, n_packets, index, len_lo, len_hi], then
+    // up to 512 data bytes. A write is a single SetFeature per packet. A read
+    // sends the header with cmd | 0x80, waits, then reads the feature report
+    // back; byte 1 echoes the command and the data starts at byte 8.
+
+    fn wired_header(cmd: u8, arg: u8, n: usize, idx: usize, len: usize) -> Vec<u8> {
+        let mut b = vec![0u8; WIRED_REPORT_LEN];
+        b[..8].copy_from_slice(&[WIRED_REPORT_ID, cmd, arg, 0, n as u8, idx as u8, len as u8, (len >> 8) as u8]);
+        b
+    }
+
+    fn wired_set(&self, buf: &[u8]) -> io::Result<()> {
+        if self.verbose {
+            eprintln!("  SET {:02x?} …", &buf[..24]);
+        }
+        let mut last = None;
+        for _ in 0..3 {
+            match self.dev.set_feature(buf) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    last = Some(e);
+                    sleep(Duration::from_millis(50));
+                }
+            }
+        }
+        Err(last.unwrap())
+    }
+
+    fn wired_write(&self, cmd: u8, arg: u8, data: &[u8], progress: &dyn Fn(usize, usize)) -> io::Result<()> {
+        let n = data.len().div_ceil(WIRED_CHUNK).max(1);
+        for idx in 0..n {
+            let chunk = &data[(idx * WIRED_CHUNK).min(data.len())..((idx + 1) * WIRED_CHUNK).min(data.len())];
+            let mut buf = Self::wired_header(cmd, arg, n, idx, chunk.len());
+            buf[8..8 + chunk.len()].copy_from_slice(chunk);
+            sleep(Duration::from_millis(25));
+            self.wired_set(&buf)?;
+            progress(idx + 1, n);
+        }
+        Ok(())
+    }
+
+    fn wired_read(&self, cmd: u8, arg: u8, len: usize) -> io::Result<Vec<u8>> {
+        let read_cmd = cmd | W_READ;
+        let n = len.div_ceil(WIRED_CHUNK).max(1);
+        let mut out = Vec::with_capacity(len);
+        for idx in 0..n {
+            let size = (len - idx * WIRED_CHUNK).min(WIRED_CHUNK);
+            self.wired_set(&Self::wired_header(read_cmd, arg, n, idx, size))?;
+            sleep(Duration::from_millis(25));
+            let reply = self.dev.get_feature(WIRED_REPORT_ID, WIRED_REPORT_LEN)?;
+            if self.verbose {
+                eprintln!("  GET {:02x?} …", &reply[..24]);
+            }
+            if reply[1] != read_cmd {
+                return Err(err(format!("keyboard answered 0x{:02X} to read command 0x{read_cmd:02X}", reply[1])));
+            }
+            out.extend_from_slice(&reply[8..8 + size]);
+        }
+        Ok(out)
+    }
+
+    // ---- receiver / Bluetooth (CDev3632) ----
 
     fn send(&self, p: &[u8; 20]) -> io::Result<()> {
         if self.verbose {
@@ -407,7 +504,7 @@ impl Device {
         let mut chunks: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
         let mut total: Option<usize> = None;
         let (resend_every, deadline) = match self.link {
-            Link::Receiver => (timeout, Instant::now() + timeout * retries as u32),
+            Link::Receiver | Link::Wired => (timeout, Instant::now() + timeout * retries as u32),
             Link::Bluetooth => (Duration::from_millis(250), Instant::now() + (timeout * retries as u32).max(Duration::from_secs(4))),
         };
         let mut req = packet(cmd, 1, 0, 0, &[]);
@@ -448,7 +545,7 @@ impl Device {
             let mut ok = false;
             // Re-sending a packet is idempotent (same index), so lost acks are harmless.
             let (tries, wait) = match self.link {
-                Link::Receiver => (6, Duration::from_secs(1)),
+                Link::Receiver | Link::Wired => (6, Duration::from_secs(1)),
                 Link::Bluetooth => (12, Duration::from_millis(1500)),
             };
             for _ in 0..tries {
@@ -471,7 +568,10 @@ impl Device {
 
     /// 6-byte product signature (vendor GetPSD).
     pub fn read_psd(&self) -> io::Result<[u8; 6]> {
-        let v = self.request(CMD_PSD, 6, 6, Duration::from_millis(800), 2)?;
+        let v = match self.link {
+            Link::Wired => self.wired_read(W_PSD, 1, 6)?,
+            _ => self.request(CMD_PSD, 6, 6, Duration::from_millis(800), 2)?,
+        };
         let mut a = [0u8; 6];
         a.copy_from_slice(&v);
         Ok(a)
@@ -482,6 +582,7 @@ impl Device {
     /// vendor DetectOnLine does for bBT devices.
     pub fn is_online(&self) -> bool {
         match self.link {
+            Link::Wired => self.read_psd().is_ok(),
             Link::Receiver => matches!(self.get(CMD_ONLINE, 1, Duration::from_millis(600), 2), Ok(v) if v[0] != 0),
             Link::Bluetooth => self.read_psd().is_ok(),
         }
@@ -497,6 +598,18 @@ impl Device {
     /// never arrive; those gaps are filled from the last complete config read
     /// from this keyboard (cached on disk). `self.filled` reports how many.
     pub fn read_config(&self) -> io::Result<LedConfig> {
+        if self.link == Link::Wired {
+            let v = self.wired_read(W_LED, 0, 128)?;
+            let mut a = [0u8; 128];
+            a.copy_from_slice(&v);
+            let c = LedConfig(a);
+            if !c.valid() {
+                return Err(err("keyboard returned an invalid lighting config"));
+            }
+            self.filled.set(0);
+            save_config_cache(&c);
+            return Ok(c);
+        }
         let (chunks, total) = self.collect(CMD_LED | READ, 0, Duration::from_secs(1), 20)?;
         let Some(t) = total else { return Err(err("no reply from keyboard for command 0x44")) };
         let complete = chunks.len() >= t;
@@ -528,21 +641,41 @@ impl Device {
     /// Every packet is acknowledged, so after success `c` is the keyboard's
     /// state; it becomes the gap-filling cache for lossy Bluetooth reads.
     pub fn write_config(&self, c: &LedConfig, pr: &dyn Fn(usize, usize)) -> io::Result<()> {
-        self.set(CMD_LED, &c.0, 0, pr)?;
+        match self.link {
+            Link::Wired => self.wired_write(W_LED, 0, &c.0, pr)?,
+            _ => self.set(CMD_LED, &c.0, 0, pr)?,
+        }
         save_config_cache(c);
         Ok(())
     }
     pub fn write_palette(&self, pal: &[[[u8; 3]; 7]], pr: &dyn Fn(usize, usize)) -> io::Result<()> {
-        self.set(CMD_PALETTE, &build_palette_table(pal), 0, pr)
+        let t = build_palette_table(pal);
+        match self.link {
+            Link::Wired => self.wired_write(W_PALETTE, 0, &t, pr),
+            _ => self.set(CMD_PALETTE, &t, 0, pr),
+        }
     }
     pub fn write_custom_colors(&self, c: &BTreeMap<usize, [u8; 3]>, pr: &dyn Fn(usize, usize)) -> io::Result<()> {
-        self.set(CMD_CUSTOM, &build_custom_planes(c), 0, pr)
+        let planes = build_custom_planes(c);
+        match self.link {
+            Link::Wired => self.wired_write(W_CUSTOM, 0, &planes, pr),
+            _ => self.set(CMD_CUSTOM, &planes, 0, pr),
+        }
     }
     pub fn write_matrix(&self, m: &[u8], layer: u8, pr: &dyn Fn(usize, usize)) -> io::Result<()> {
-        self.set(CMD_MATRIX, m, layer, pr)
+        match self.link {
+            Link::Wired => self.wired_write(W_MATRIX, layer, m, pr),
+            _ => self.set(CMD_MATRIX, m, layer, pr),
+        }
     }
-    /// Vendor "Reset using cmd": bare 0x06 request, no reply.
+    /// Vendor "Reset using cmd": wired 0x11 with one byte, wireless a bare
+    /// 0x06 request; no reply either way.
     pub fn factory_reset(&self) -> io::Result<()> {
+        if self.link == Link::Wired {
+            self.wired_write(W_RESET, 0, &[0], &|_, _| {})?;
+            sleep(Duration::from_millis(500));
+            return Ok(());
+        }
         self.send(&packet(CMD_RESET, 1, 0, 0, &[]))?;
         sleep(Duration::from_millis(500));
         Ok(())
@@ -552,6 +685,14 @@ impl Device {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wired_header() {
+        // the lighting-config read, as sent by the vendor tool and verified on hardware
+        let h = Device::wired_header(W_LED | W_READ, 0, 1, 0, 128);
+        assert_eq!(h.len(), 520);
+        assert_eq!(&h[..8], &[0x06, 0x84, 0x00, 0x00, 0x01, 0x00, 0x80, 0x00]);
+    }
 
     #[test]
     fn packet_checksum() {

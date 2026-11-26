@@ -103,6 +103,9 @@ const fn ioc(dir: u64, ty: u64, nr: u64, size: u64) -> u64 {
 fn hidiocsfeature(len: usize) -> u64 {
     ioc(3, b'H' as u64, 0x06, len as u64)
 }
+fn hidiocgfeature(len: usize) -> u64 {
+    ioc(3, b'H' as u64, 0x07, len as u64)
+}
 
 pub struct Hidraw {
     fd: OwnedFd,
@@ -183,5 +186,16 @@ impl Hidraw {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    /// Read a `len`-byte feature report (including the report id byte).
+    pub fn get_feature(&self, report_id: u8, len: usize) -> io::Result<Vec<u8>> {
+        let mut buf = vec![0u8; len];
+        buf[0] = report_id;
+        let r = unsafe { libc::ioctl(self.fd.as_raw_fd(), hidiocgfeature(len) as _, buf.as_mut_ptr()) };
+        if r < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(buf)
     }
 }
