@@ -1,7 +1,7 @@
 # PolariTha
 
 A Linux port of the vendor configuration software for the **AQIRYS Polaris Wired** mouse
-and the **AQIRYS Talitha** keyboard (through its 2.4 GHz receiver or over Bluetooth), written in Rust.
+and the **AQIRYS Talitha** keyboard (over a USB cable, its 2.4 GHz receiver or Bluetooth), written in Rust.
 It's a single binary with an egui GUI and a small CLI, and it talks to the devices
 directly through `/dev/hidraw*`.
 
@@ -43,7 +43,7 @@ The vendor tool never reads settings back from the mouse, so this app doesn't ei
 Settings are stored in `~/.config/polaritha/polaris.json`, and **Apply** writes all
 profiles to the mouse.
 
-**Talitha (keyboard, via the 3554:fa09 receiver or Bluetooth):**
+**Talitha (keyboard, over a USB cable, the 3554:fa09 receiver or Bluetooth):**
 - reads the current lighting state from the keyboard
 - 18 effects (the vendor hides a 19th, "Retinue scanning", for this model) with
   brightness 0–4 and speed 1–4
@@ -73,13 +73,21 @@ polaritha -v …            # dump raw HID traffic
 
 - mouse macros, the "gun" (recoil) feature, and Office/Game button modes
 - keyboard macros, Fn-layer editing, music/screen-sync lighting, firmware update
-- the keyboard's wired mode (258a:0236)
+
+## Connections
+
+The keyboard works over all three of its connections, using the first one that
+is available:
+
+1. **USB cable** (258a:0236, shown as "BY Tech USB Keyboard"): 520-byte feature
+   reports. Reads and writes take a few milliseconds.
+2. **Bluetooth** ("Talitha BT3.0", 3554:fa08).
+3. **2.4 GHz receiver** (3554:fa09).
 
 ## Bluetooth
 
 When the keyboard is connected over Bluetooth ("Talitha BT3.0", 3554:fa08; BLE
-would be 3554:fa07), the app talks to it directly over BT, and BT takes priority
-over the receiver. It uses the same protocol as the receiver, except that
+would be 3554:fa07), the app talks to it directly over BT. It uses the same protocol as the receiver, except that
 liveness is checked with GetPSD instead of the receiver's link query.
 
 The read path is lossy on some laptops: the keyboard sends its 10-packet config
@@ -93,7 +101,7 @@ seconds.
 
 ## Notes
 
-- The keyboard has to be awake and connected (receiver or Bluetooth). If it is
+- The keyboard has to be awake and connected. Over the receiver or Bluetooth, if it is
   reported as offline, press a key and click **Read from keyboard**.
 - Per-key colours assume the LED index equals the key's matrix index (the vendor
   KB.ini only gives one index per key).

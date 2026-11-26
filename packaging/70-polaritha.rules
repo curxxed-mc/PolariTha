@@ -9,5 +9,5 @@ SUBSYSTEM=="hidraw", KERNELS=="0003:3554:FA09.*", TAG+="uaccess"
 # AQIRYS Talitha over Bluetooth (BLE 0xFA07, classic "Talitha BT3.0" 0xFA08)
 SUBSYSTEM=="hidraw", KERNELS=="0005:3554:FA07.*", TAG+="uaccess"
 SUBSYSTEM=="hidraw", KERNELS=="0005:3554:FA08.*", TAG+="uaccess"
-# AQIRYS Talitha wired (not yet supported by the app)
+# AQIRYS Talitha over a USB cable
 SUBSYSTEM=="hidraw", KERNELS=="0003:258A:0236.*", TAG+="uaccess"

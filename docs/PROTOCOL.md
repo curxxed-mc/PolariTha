@@ -110,3 +110,29 @@ Multi-packet replies arrive in bursts tied to the BT sniff interval (~0.8 s),
 and packets inside a burst are frequently lost before reaching the host
 (verified with btmon). The fix is to re-request and merge packets by index.
 Writes are acknowledged per packet, and re-sending a packet is idempotent.
+
+### USB cable (258a:0236, "CDevG5KB")
+
+Plugged in by cable, the keyboard enumerates as a Sinowealth-based
+`258A:0236` "BY Tech USB Keyboard". Configuration goes through vendor feature
+report **6** on interface 1: a `0xFF00` collection whose feature report is 519
+bytes plus the ID (`0x208` = 520 bytes in total).
+
+Header: `06 cmd arg 00 npk idx len_lo len_hi`, followed by up to 512 data bytes.
+A write is one SetFeature per packet. A read sends the header with `cmd | 0x80`,
+waits ~25 ms, then reads feature report 6 back; byte 1 echoes the command and
+the data starts at byte 8. There are no acknowledgements or checksums.
+
+| cmd   | payload                                                  | wireless equivalent |
+|-------|----------------------------------------------------------|---------------------|
+| 0x02  | PSD, read only (`0x82`, arg 1, 6 bytes)                  | 0x05                |
+| 0x03  | key matrix, arg = layer, 126 × 4 bytes                   | 0x01                |
+| 0x04  | 128-byte config (read `0x84`)                            | 0x04 / 0x44         |
+| 0x05  | macro data (not implemented)                             | 0x03                |
+| 0x06  | per-key colour planes, arg = group                       | 0x02                |
+| 0x0A  | per-effect palette table                                 | 0x09                |
+| 0x11  | factory reset (1 byte)                                   | 0x06                |
+
+The config, palette, colour planes and key matrix have the same layout as over
+the receiver. Byte `0x0E` of the config reads `00` over the cable and `01` over
+the receiver; PolariTha doesn't use it.
